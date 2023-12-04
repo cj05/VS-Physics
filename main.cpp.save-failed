@@ -1,0 +1,181 @@
+#include "opencl.hpp"
+#include "iostream"
+#define printArr(n,N) for(int i = 0;i < N/Nx/3;i++) {for(int j = 0;j < Nx*3;j++) std::cout<<n[(i%3*3+j%3) + (j/3*9+i/3*Nx*9)]<<" "; std::cout<<"\n";} std::cout<<"\n"; std::cout<<std::flush;
+
+#define printCFDDG(n) for(int j = 0;j < Ny;j++) {for(int i = 0;i < Nx;i++){ double d = 0; for(int k = 0;k < Nl;k++) d += n[(j*Nx+i)*Nl+k]; std::cout<<gradient[69-std::min(69,int(d/2))];} std::cout<<"\n";} std::cout<<"\n"; std::cout<<std::flush;
+
+#define printCFDD(n) for(int j = 0;j < Ny;j++) {for(int i = 0;i < Nx;i++){ double d = 0; for(int k = 0;k < Nl;k++) d += n[(j*Nx+i)*Nl+k]; std::cout<<int(d);} std::cout<<"\n";} std::cout<<"\n"; std::cout<<std::flush;
+//
+
+
+char gradient[] = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
+class BoltzmanLattice{
+    private:
+        const uint Nx = 200;
+        const uint Ny = 50;
+        const uint Nl = 9;
+        double avgdensity  = 100;    // average density
+        double tau         = 0.6;    // collision timescale
+        Device device;
+        Memory<double> *Lattice;
+        Memory<double> *LatticeEnd;
+        Memory<int> *boundary;
+        Memory<double> *weight;
+        Memory<double> *Size;
+        Memory<double> *dAir;
+        Memory<int> *cOffset;
+        Memory<int> *tMatrix;
+
+        double* w;
+
+        void init(Device device,int* boundaryIn,double* enviromentAir){
+            double density = 0;
+            for(int i = 0; i < Nl;i++){
+                density += enviromentAir[i];
+            }
+            for(int i = 0; i < Nl;i++){
+                enviromentAir[i]*=this->avgdensity/density/2;
+            }
+
+            this->Lattice = new Memory<double>(device, this->Nx*this->Ny*this->Nl); // 3darray in 1d, access data at l+(y+x*Ny)*Nl
+            this->LatticeEnd = new Memory<double>(device, this->Nx*this->Ny*this->Nl); // 3darray in 1d, access data at l+(y+x*Ny)*Nl
+            this->boundary = new Memory<int>(device, this->Nx*this->Ny);
+            this->weight = new Memory<double>(device, Nl);
+            this->Size = new Memory<double>(device,4);
+            this->dAir = new Memory<double>(device,Nl,1,enviromentAir);
+            this->cOffset = new Memory<int>(device,Nl*2);
+            this->tMatrix = new Memory<int>(device,Nl*Nl);
+
+            const int transformationMatrix[] =
+            {1,1,1,1,1,1,1,1,1
+            ,-4,-1,-1,-1,-1,2,2,2,2
+            ,4,-2,-2,-2,-2,1,1,1,1
+            ,0,1,0,-1,0,1,-1,-1,1
+            ,0,-2,0,2,0,1,-1,-1,1
+            ,0,0,1,0,-1,1,1,-1,-1
+            ,0,0,-2,0,2,1,1,-1,-1
+            ,0,1,-1,1,-1,0,0,0,0
+            ,0,0,0,0,0,1,-1,1,-1
+            };
+
+
+            const double w[] = {4/9.,1/9.,1/9.,1/9.,1/9.,1/36.,1/36.,1/36.,1/36.};
+            int cx[] = { 0, 1, 0,-1, 0, 1,-1,-1, 1};
+            int cy[] = { 0, 0, 1, 0,-1, 1, 1,-1,-1};
+            //int cz[] = { 1, 1, 1, 0, 0, 0,-1,-1,-1};
+            for(int i = 0; i < (this->Nl);i++){
+                (*this->weight)[i] = w[i];
+                (*this->cOffset)[i] = cx[i];
+                (*this->cOffset)[i+Nl] = cy[i];
+                for(int j = 0; j < (this->Nl);j++){
+                    (*this->tMatrix)[i*Nl+j] = transformationMatrix[i*Nl+j];
+                }
+            }
+
+            (*this->Size)[0] = this->Nx;
+            (*this->Size)[1] = this->Ny;
+            (*this->Size)[2] = this->Nl;
+            (*this->Size)[3] = this->tau*60;
+            for(int i = 0; i < (this->Nx)*(this->Ny)*(this->Nl);i++){
+                int l = i%this->Nl;
+                (*this->Lattice)[i] =(*this->dAir)[l];
+                //Lattice[i] = i;
+                (*this->LatticeEnd)[i] = 0;
+            }
+
+
+            for(int i = 0;i < this->Ny; i++){
+                for(int j = 0;j < this->Nx;j++){
+                    (*this->boundary)[j+i*Nx] = boundaryIn[j+i*Nx];
+                    //std::cout<<(*this->boundary)[j+i*Nx]<<" ";
+                }
+                //std::cout<<"\n";
+            }//std::cout<<std::flush;
+            this->cOffset->write_to_device();
+            this->weight->write_to_device();
+            this->tMatrix->write_to_device();
+
+        }
+
+    public:
+        BoltzmanLattice(){
+            Device device(select_device_with_most_flops()); // compile OpenCL C code for the fastest available device
+            double dir[9] = {1,3.1,1,1,1,1,1,1,1};
+            int bound[this->Nx*this->Ny] = {};
+            for(int i = 0;i < this->Nx;i++){
+                for(int j = 0;j < this->Ny;j++){
+                    bound[i+j*this->Nx] = (this->Nx/4-i)*(this->Nx/4-i) + (this->Ny/2-j)*(this->Ny/2-j) < min(this->Nx,this->Ny)*min(this->Nx,this->Ny)/16;
+                }
+            }
+            this->init(device,bound,dir);
+            this->device = device;
+        }
+        BoltzmanLattice(int* bound){
+            Device device(select_device_with_most_flops()); // compile OpenCL C code for the fastest available device
+            double dir[9] = {1,3.1,1,1,1,1,1,1,1};
+            this->init(device,bound,dir);
+            this->device = device;
+        }
+        BoltzmanLattice(int* bound,double* airflow){
+            Device device(select_device_with_most_flops()); // compile OpenCL C code for the fastest available device
+            this->init(device,bound,airflow);
+            this->device = device;
+        }
+
+        void tick(){
+
+
+            Device device = this->device;
+            Kernel tick_lattice(this->device, (this->Nx)*(this->Ny), "tick_lattice", *this->Lattice, *this->LatticeEnd,*this->Size,*this->boundary,*this->weight,*this->dAir,*this->cOffset,*this->tMatrix); // kernel that runs on the device
+
+            //printArr(Lattice,Nx*Ny*Nl);
+            //printArr(LatticeEnd,Nx*Ny*Nl);
+            this->Size->write_to_device();
+            this->boundary->write_to_device();
+            this->Lattice->write_to_device(); // copy data from host memory to device memory
+
+
+            tick_lattice.run(); // run add_kernel on the device
+
+            this->LatticeEnd->read_from_device();
+            //for(int i = 0;i < Nx*Ny*Nl;i++){
+            //    Lattice[i] = LatticeEnd[i];
+            //}
+            this->LatticeEnd->write_to_device();
+
+            Kernel copyarr(device, (this->Nx)*(this->Ny)*(this->Nl), "copyarr", *this->Lattice,*this->LatticeEnd,*this->Size); // kernel that runs on the device
+            copyarr.run();
+            this->Lattice->read_from_device();
+        }
+        void printConsole(){
+            //printCFDDG((*(this->LatticeEnd)));
+            for(int j = 0;j < Ny;j++){
+                for(int i = 0;i < Nx;i++){
+                    double d = 0;
+                    for(int k = 0;k < Nl;k++){
+                        int offsetx = (*this->cOffset)[k];
+                        int offsety = (*this->cOffset)[k+Nl];
+                        d += (*(this->LatticeEnd))[(j*Nx+i)*Nl+k]*offsety;
+                    }
+                    std::cout<<gradient[69-std::max(0,std::min(69,int(d*4)+35))];
+                } std::cout<<"\n";
+            } std::cout<<"\n";
+            std::cout<<std::flush;
+        }
+
+};
+
+
+int main() {
+    BoltzmanLattice cfd;
+    std::ios_base::sync_with_stdio(false);
+    std::cin.tie(0);
+    do{
+        cfd.tick();
+        cfd.printConsole();
+        wait();
+    }while(true);
+
+	return 0;
+}
+
