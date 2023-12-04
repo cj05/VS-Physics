@@ -12,6 +12,6 @@ You can compile the cfd with any c++-11 compliant complier
 # Eta?
 uh no i just work on this whenever i am free
 
-#Contributions
+# Contributions
 fork and make a pull request, if anyone knows how to make the cfd less scuffed/make the kotlin layer, help would be appreciated
 
