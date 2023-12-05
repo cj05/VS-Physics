@@ -1,7 +1,6 @@
 # depslib dependency file v1.0
-1701690218 source:c:\cjs data folder\gpu\main.cpp
-	"opencl.hpp"
-	"iostream"
+1701758964 source:c:\cjs data folder\gpu\main.cpp
+	"BML.cpp"
 
 1701501467 c:\cjs data folder\gpu\opencl.hpp
 	<CL/cl.hpp>
@@ -17,9 +16,14 @@
 	<fstream>
 	<filesystem>
 
-1701690343 source:c:\cjs data folder\gpu\kernel.cpp
+1701772668 source:c:\cjs data folder\gpu\kernel.cpp
 	"kernel.hpp"
 
 1701501467 c:\cjs data folder\gpu\kernel.hpp
 	"utilities.hpp"
+
+1701772706 c:\cjs data folder\gpu\bml.cpp
+	"opencl.hpp"
+	"iostream"
+	"cmath"
 

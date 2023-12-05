@@ -1,13 +1,16 @@
 #include "kernel.hpp" // note: unbalanced round brackets () are not allowed and string literals can't be arbitrarily long, so periodically interrupt with )+R(
 string opencl_c_container() { return R( // ########################## begin of OpenCL C code ####################################################################
 
-
-kernel void tick_lattice(global double* Lattice,global double* LatticeOutput,global double* Size,global int* boundary,global double* weight,global double* dAir,global int* offsetl,global double* tMatrix) { // equivalent to "for(uint n=0u; n<N; n++) {", but executed in parallel
+/**
+ * Kernel function for the cfd
+ */
+kernel void tick_lattice(global double* Lattice,global double* LatticeOutput,global double* Size,global int* boundary
+                         ,global double* weight,global double* dAir,global int* offsetl,global double* tMatrix,global double* Record) {
 	const uint n = get_global_id(0);
 	double omega =  0.809;
 	double omega_bulk =  0.809;
 	double diagomega=1./Size[3];
-    double omegamat[]={1.0,omega_bulk,omega,0.0,omega,0.0,omega,omega,omega};
+    double omegamat[]={2.0,omega_bulk,omega,0.0,omega,0.0,omega,omega,omega};
 
 
 	uint Nx = Size[0];
@@ -41,6 +44,7 @@ kernel void tick_lattice(global double* Lattice,global double* LatticeOutput,glo
         if((int)x-offsetx<0||(int)x-offsetx>=Nx||(int)y-offsety<0||(int)y-offsety>=Ny) continue;
         LatticeOutput[ci] = Lattice[ci-offsetx*Nl-offsety*Nl*Nx];
 	}
+
 
 
 
@@ -177,6 +181,7 @@ kernel void copyarr(global double* Lattice,global double* LatticeEnd,global doub
 	if(n > Nx*Ny*Nl) return;
     Lattice[n] = LatticeEnd[n];
 }
+
 
 
 );} // ############################################################### end of OpenCL C code #####################################################################
